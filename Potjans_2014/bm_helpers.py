@@ -67,6 +67,12 @@ def logging(py_timers=None, memory_used=None, intermediate_kernel_status={}):
             for key, value in memory_used.items():
                 f.write(key + ' ' + str(value) + '\n')
 
+    # NEST built with cycle timers keeps one entry per cycle in its cycle_time_log. The logfile above
+    # shortens long arrays, so each rank also saves the whole log, one array per key.
+    if 'cycle_time_log' in d:
+        np.savez(os.path.join('data', '_'.join(('cycle_time_log', str(nest.Rank())))),
+                 **{key: np.asarray(value) for key, value in d['cycle_time_log'].items()})
+
 
 def memory():
     """
