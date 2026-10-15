@@ -429,6 +429,13 @@ class Simulation:
             for key, value in d.items():
                 f.write(key + ' ' + str(value) + '\n')
 
+        # NEST built with cycle timers keeps one entry per cycle in its cycle_time_log. The logfile above
+        # shortens long arrays, so each rank also saves the whole log, one array per key.
+        if 'cycle_time_log' in final_kernel_status:
+            np.savez(os.path.join(self.data_dir, 'recordings',
+                                  '_'.join((self.label, 'cycle_time_log', str(nest.Rank())))),
+                     **{key: np.asarray(value) for key, value in final_kernel_status['cycle_time_log'].items()})
+
     def save_network_gids(self):
         with open(os.path.join(self.data_dir,
                                'recordings',
