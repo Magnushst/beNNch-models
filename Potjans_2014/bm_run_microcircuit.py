@@ -53,8 +53,6 @@ net_dict.update({
     'poisson_input': {poisson_input},
     'V0_type': {V0_type},
     'synapse_type': {synapse_type}})
-# Scales every mean connection delay (1.0 leaves the model unchanged).
-net_dict['delay_matrix_mean'] = net_dict['delay_matrix_mean'] * {delay_scale}
 
 py_timers = {}
 memory_used = {}
