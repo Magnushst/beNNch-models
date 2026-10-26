@@ -1,5 +1,6 @@
 import json
 import os
+import resource
 
 import nest
 import numpy as np
@@ -66,6 +67,9 @@ def logging(py_timers=None, memory_used=None, intermediate_kernel_status={}):
         if memory_used:
             for key, value in memory_used.items():
                 f.write(key + ' ' + str(value) + '\n')
+        # The memory above is NEST's virtual size; also the most memory this rank has held, its peak resident set in
+        # KiB as the kernel counts it.
+        f.write('peak_resident_memory_kib ' + str(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) + '\n')
 
     # NEST built with cycle timers keeps one entry per cycle in its cycle_time_log. The logfile above
     # shortens long arrays, so each rank also saves the whole log, one array per key.
