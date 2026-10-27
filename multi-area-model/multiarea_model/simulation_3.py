@@ -31,6 +31,7 @@ from .default_params_3 import nested_update, sim_params
 from .default_params_3 import check_custom_params
 from dicthash import dicthash
 from .multiarea_helpers import extract_area_dict, create_vector_mask
+from .perf_recording import Recording
 try:
     from .sumatra_helpers import register_runtime
     sumatra_found = True
@@ -328,9 +329,12 @@ class Simulation:
 
         self.intermediate_kernel_status = nest.kernel_status
 
+        # perf record on ranks 0 and 1 for the measured simulation only (perf_recording.py)
+        recording = Recording(nest.Rank(), os.path.join(self.data_dir, 'recordings')).start()
         t6 = time.time()
         nest.Run(self.T)
         self.time_simulate = time.time() - t6
+        recording.stop()
 
         self.total_memory = self.memory()
         print("Simulated network in {0:.2f} seconds.".format(self.time_simulate))
