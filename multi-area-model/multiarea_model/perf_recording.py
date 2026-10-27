@@ -76,8 +76,21 @@ class Recording:
         return False
 
     def start(self):
+        """Never raises: on any failure the rank simulates unrecorded, and the failure is logged."""
         if self.rank not in RANKS:
             return self
+        try:
+            return self._start()
+        except Exception as err:  # noqa: BLE001
+            self.log.update(started=False, error="start: {!r}".format(err))
+            if self.perf is not None:
+                self.perf.kill()
+                self.perf.wait()
+                self.perf = None
+            self._write_log()
+            return self
+
+    def _start(self):
         names = [next((e for e in role if accepted(e)), None) for role, _ in ROLES]
         events = [with_period(e, period, self.data + ".probe") if e else None for e, (_, period) in zip(names, ROLES)]
         try:
@@ -115,12 +128,25 @@ class Recording:
         return self
 
     def _close(self):
-        os.close(self.ctl)
-        os.close(self.ack)
+        for fd in (self.ctl, self.ack):
+            try:
+                os.close(fd)
+            except OSError:
+                pass
 
     def stop(self):
+        """Never raises: a failure is logged."""
         if self.perf is None:
             return
+        try:
+            self._stop()
+        except Exception as err:  # noqa: BLE001
+            self.log["error"] = "stop: {!r}".format(err)
+            if self.perf.poll() is None:
+                self.perf.kill()
+            self._write_log()
+
+    def _stop(self):
         self.log["disabled_at"] = time.time()
         self.log["disabled"] = self._command("disable", 300)
         self.perf.send_signal(signal.SIGINT)
