@@ -22,6 +22,10 @@ mam_state = sys.argv[8]
 rng_seed = int(sys.argv[9])
 t_presim = float(sys.argv[10])
 record_spikes = sys.argv[11] == 'True'
+# EXPERIMENTAL, NOT THE MULTI-AREA MODEL when set (lookahead experiment): three optional arguments
+interarea_delay_floor_steps = int(sys.argv[12]) if len(sys.argv) > 12 else 0
+area_split = sys.argv[13] if len(sys.argv) > 13 else 'none'
+remote_exchange_slices = int(sys.argv[14]) if len(sys.argv) > 14 else 1
 
 if mam_state == 'ground':
     figure = 'Fig3'
@@ -43,7 +47,10 @@ sim_params = {'t_sim': t_sim,
               't_presim': t_presim,
               'num_processes': num_processes,
               'local_num_threads': num_local_threads,
-              'recording_dict': {'record_vm': False}}
+              'recording_dict': {'record_vm': False},
+              'interarea_delay_floor_steps': interarea_delay_floor_steps,
+              'area_split': area_split,
+              'remote_exchange_slices': remote_exchange_slices}
 
 if not record_spikes:
     sim_params['recording_dict']['areas_recorded'] = []

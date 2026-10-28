@@ -53,7 +53,14 @@ sim_params = {
     # Spike buffer adaptation
     'spike_buffer_grow_extra' : 0.5,
     'spike_buffer_shrink_limit': 0.2,
-    'spike_buffer_shrink_spare': 0.1
+    'spike_buffer_shrink_spare': 0.1,
+    # EXPERIMENTAL, NOT THE MULTI-AREA MODEL when changed from these defaults (lookahead experiment, 28 Oct 2026):
+    # smallest inter-area delay in simulation steps; 0 keeps the model's own lower limit of half a step
+    'interarea_delay_floor_steps': 0,
+    # 'none' keeps NEST's round-robin placement; otherwise a file in area_splits/ that puts each area on one process
+    'area_split': 'none',
+    # NEST's remote_exchange_slices; above 1 needs the experimental NEST EXPERIMENTAL-NOT-STOCK-windowed-remote-exchange
+    'remote_exchange_slices': 1
 }
 
 """

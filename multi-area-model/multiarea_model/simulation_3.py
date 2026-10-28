@@ -164,6 +164,10 @@ class Simulation:
                               'spike_buffer_shrink_limit': self.params['spike_buffer_shrink_limit'],
                               'spike_buffer_shrink_spare': self.params['spike_buffer_shrink_spare']})
 
+        # EXPERIMENTAL, NOT STOCK NEST: only the experimental NEST knows this setting, so it is set only when used.
+        if self.params['remote_exchange_slices'] > 1:
+            nest.SetKernelStatus({'remote_exchange_slices': self.params['remote_exchange_slices']})
+
         # nest.set_verbosity('M_INFO')
 
         nest.SetDefaults(self.network.params['neuron_params']['neuron_model'],
@@ -197,12 +201,59 @@ class Simulation:
         Create all areas with their populations and internal connections.
         """
         self.areas = []
+        self.packed_gids = self.create_packed_populations()
         for area_name in self.areas_simulated:
             a = Area(self, self.network, area_name)
             self.areas.append(a)
             self.time_create += a.time_create
             self.time_connect_area += a.time_connect_area
             print("Memory after {0} : {1:.2f} MB".format(area_name, self.memory() / 1024.))
+
+    def create_packed_populations(self):
+        """
+        EXPERIMENTAL, NOT THE MULTI-AREA MODEL: with an area split, every unit of an area lies on its area's process.
+
+        NEST places node id i on process i % num_processes (round-robin over virtual processes, whose number is a
+        multiple of the number of processes). So all units are created in one call, and each process's areas take,
+        population by population, the ids of that call congruent to the process. Processes whose areas hold fewer
+        units than the largest keep their remaining ids as idle units: unconnected, never recorded, with no input.
+        Returns {(area, population): NodeCollection}, or None without a split.
+        """
+        if self.params['area_split'] == 'none':
+            return None
+        fn = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'area_splits',
+                          self.params['area_split'] + '.json')
+        with open(fn, 'r') as f:
+            split = json.load(f)
+        R = self.params['num_processes']
+        if split['processes'] != R:
+            raise ValueError('Area split {} is for {} processes, not {}.'.format(
+                self.params['area_split'], split['processes'], R))
+        if set(split['areas']) != set(self.areas_simulated):
+            raise ValueError('Area split {} does not assign exactly the simulated areas.'.format(
+                self.params['area_split']))
+
+        counts = {area: [(pop, int(self.network.N[area][pop])) for pop in self.network.structure[area]]
+                  for area in self.areas_simulated}
+        per_process = [0] * R
+        for area in self.areas_simulated:
+            per_process[split['areas'][area]] += sum(n for _, n in counts[area])
+        slots = max(per_process)
+        block = nest.Create(self.network.params['neuron_params']['neuron_model'], R * slots)
+        first = block[0].get()['global_id']
+
+        gids = {}
+        used = [0] * R
+        for area in self.areas_simulated:
+            r = split['areas'][area]
+            offset = (r - first) % R  # the first index in block whose id is congruent to r
+            for pop, n in counts[area]:
+                gids[(area, pop)] = block[offset + used[r] * R:offset + (used[r] + n) * R:R]
+                used[r] += n
+        self.idle_units = R * slots - sum(per_process)
+        print('Area split {}: {} unit ids per process, {} idle units ({:.2f} %).'.format(
+            self.params['area_split'], slots, self.idle_units, 100. * self.idle_units / (R * slots)))
+        return gids
 
     def cortico_cortical_input(self):
         """
@@ -444,10 +495,11 @@ class Simulation:
                 for pop in self.network.structure[area.name]:
                     first_id = area.gids[pop][0].get()['global_id']
                     last_id = area.gids[pop][-1].get()['global_id']
-                    f.write("{area},{pop},{g0},{g1}\n".format(area=area.name,
-                                                              pop=pop,
-                                                              g0=first_id,
-                                                              g1=last_id))
+                    line = "{area},{pop},{g0},{g1}".format(area=area.name, pop=pop, g0=first_id, g1=last_id)
+                    if self.packed_gids is not None:
+                        # EXPERIMENTAL: with an area split, a population's ids step by the number of processes
+                        line += ",{}".format(self.params['num_processes'])
+                    f.write(line + "\n")
 
     def register_runtime(self):
         if sumatra_found:
@@ -531,8 +583,12 @@ class Area:
         self.gids = {}
         self.num_local_nodes = 0
         for pop in self.populations:
-            gid = nest.Create(self.network.params['neuron_params']['neuron_model'],
-                              int(self.neuron_numbers[pop]))
+            if self.simulation.packed_gids is not None:
+                # EXPERIMENTAL, NOT THE MULTI-AREA MODEL: the area's ids on its process (create_packed_populations)
+                gid = self.simulation.packed_gids[(self.name, pop)]
+            else:
+                gid = nest.Create(self.network.params['neuron_params']['neuron_model'],
+                                  int(self.neuron_numbers[pop]))
             mask = create_vector_mask(self.network.structure, areas=[self.name], pops=[pop])
             I_e = self.network.add_DC_drive[mask][0]
             if not self.network.params['input_params']['poisson_input']:
@@ -697,6 +753,14 @@ def connect(simulation,
                     s = network.distances[target_area.name][source_area.name]
                     mean_delay = s / v
 
+                # The model redraws delays below half a step. EXPERIMENTAL, NOT THE MULTI-AREA MODEL: with a floor of
+                # D steps, inter-area delays are redrawn below D - 1/2 steps, so they round to at least D steps.
+                floor_steps = simulation.params['interarea_delay_floor_steps']
+                if target_area != source_area and floor_steps > 0:
+                    delay_min = (floor_steps - 0.5) * nest.resolution
+                else:
+                    delay_min = simulation.params['dt'] - 0.5 * nest.resolution
+
                 syn_spec = {
                     'synapse_model': 'static_synapse',
                     'weight': nest.math.redraw(
@@ -712,7 +776,7 @@ def connect(simulation,
                             mean=mean_delay,
                             std=mean_delay * network.params['delay_params']['delay_rel']
                             ),
-                        min=simulation.params['dt'] - 0.5 * nest.resolution,
+                        min=delay_min,
                         max=np.Inf)}
 
                 nest.Connect(source_area.gids[source],
