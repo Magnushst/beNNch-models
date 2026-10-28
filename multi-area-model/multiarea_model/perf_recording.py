@@ -6,6 +6,8 @@ event, period and call stack), compressed, into the run's recordings folder. The
 /work/scratch/$USER/nest_perf/<job> (the run's folder if that does not exist). A rank without perf, or whose perf
 fails, records nothing and simulates as usual; every step is logged in perf_<rank>.json beside the write-out.
 The options and events were tried on a Hambach Zen 3 node before this run (Magnus Stromme, 27 Oct 2026).
+write_pages records every rank's memory and its share on large pages as the measured simulation starts and ends
+(pages_<rank>_start.txt, pages_<rank>_end.txt in the recordings folder; Magnus Stromme, 28 Oct 2026).
 """
 import json
 import os
@@ -165,3 +167,26 @@ class Recording:
         self.log["script_seconds"] = time.time() - start
         self.log["data_bytes"] = os.path.getsize(self.data) if os.path.exists(self.data) else None
         self._write_log()
+
+
+def write_pages(path):
+    """The rank's memory totals (/proc/self/smaps_rollup), among them how much of its anonymous memory sits on large
+    pages (AnonHugePages), then the number of jemalloc mappings and the node's transparent huge page settings: the
+    candidates' record (delivery_v1_candidates.cpp, record_pages) plus the settings. Never raises: a failure is
+    written into the file, and the rank simulates as usual."""
+    lines = []
+    try:
+        with open("/proc/self/smaps_rollup") as f:
+            lines.append(f.read().rstrip("\n"))
+        with open("/proc/self/maps") as f:
+            lines.append("jemalloc mappings: {}".format(sum("libjemalloc" in line for line in f)))
+        for name in ("enabled", "defrag", "khugepaged/defrag"):
+            with open("/sys/kernel/mm/transparent_hugepage/" + name) as f:
+                lines.append("thp {}: {}".format(name, f.read().strip()))
+    except Exception as err:  # noqa: BLE001
+        lines.append("error: {!r}".format(err))
+    try:
+        with open(path, "w") as f:
+            f.write("\n".join(lines) + "\n")
+    except OSError:
+        pass
