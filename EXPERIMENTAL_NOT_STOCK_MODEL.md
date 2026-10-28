@@ -10,7 +10,7 @@ only to push this branch.
   floor, **this is not the multi-area model.**
 - `area_split` (default `none`): a file in `multi-area-model/multiarea_model/area_splits/` that puts each area on one
   process. All units are created in one call, and each area takes ids congruent to its process. Processes with fewer
-  units keep idle units: unconnected, never recorded, with no input. With a split, **this is not the multi-area model's
+  units keep idle units: unconnected, never recorded, with no input, and frozen, so NEST does not update them. With a split, **this is not the multi-area model's
   placement.**
 - `remote_exchange_slices` (default 1): passed to NEST only when above 1, which needs the experimental NEST
   `EXPERIMENTAL-NOT-STOCK-windowed-remote-exchange`.

@@ -216,8 +216,8 @@ class Simulation:
         NEST places node id i on process i % num_processes (round-robin over virtual processes, whose number is a
         multiple of the number of processes). So all units are created in one call, and each process's areas take,
         population by population, the ids of that call congruent to the process. Processes whose areas hold fewer
-        units than the largest keep their remaining ids as idle units: unconnected, never recorded, with no input.
-        Returns {(area, population): NodeCollection}, or None without a split.
+        units than the largest keep their remaining ids as idle units: unconnected, never recorded, with no input, and
+        frozen, so NEST does not update them. Returns {(area, population): NodeCollection}, or None without a split.
         """
         if self.params['area_split'] == 'none':
             return None
@@ -242,14 +242,22 @@ class Simulation:
         block = nest.Create(self.network.params['neuron_params']['neuron_model'], R * slots)
         first = block[0].get()['global_id']
 
+        def ids_of(r, j0, j1):
+            """Process r's id slots j0 to j1 - 1 in block; the slice ends just after the last, inside block."""
+            offset = (r - first) % R  # the first index in block whose id is congruent to r
+            return block[offset + j0 * R:offset + (j1 - 1) * R + 1:R]
+
         gids = {}
         used = [0] * R
         for area in self.areas_simulated:
             r = split['areas'][area]
-            offset = (r - first) % R  # the first index in block whose id is congruent to r
             for pop, n in counts[area]:
-                gids[(area, pop)] = block[offset + used[r] * R:offset + (used[r] + n) * R:R]
-                used[r] += n
+                if n > 0:
+                    gids[(area, pop)] = ids_of(r, used[r], used[r] + n)
+                    used[r] += n
+        for r in range(R):
+            if used[r] < slots:
+                ids_of(r, used[r], slots).set({'frozen': True})
         self.idle_units = R * slots - sum(per_process)
         print('Area split {}: {} unit ids per process, {} idle units ({:.2f} %).'.format(
             self.params['area_split'], slots, self.idle_units, 100. * self.idle_units / (R * slots)))
