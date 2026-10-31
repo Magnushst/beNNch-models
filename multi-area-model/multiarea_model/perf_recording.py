@@ -13,6 +13,10 @@ stacks, for the first WINDOW seconds of the measured simulation. Hambach's kerne
 event in per-thread mode"), so the rank's CPUs are recorded: every CPU any of its threads may run on (OpenMP binds the
 main thread to one of them). The samples are told apart by process later. It was tried on the candidates first
 (delivery_v1/candidates/IBS_2026-10-30.md).
+MODE "fills" (Magnus Stromme, 31 Oct 2026) records the rank's own process for the first WINDOW seconds with five core
+events and 1 kB call stacks: cycles; demand fills of the L1 cache from the L3 (or another L2 of the same core complex)
+and from local memory; and what the L1 and L2 hardware prefetchers fetch from local memory. They tell where delivery's
+misses are served from and how much the prefetchers add (delivery_v1/FILLS_2026-10-31.md).
 write_pages records every rank's memory and its share on large pages as the measured simulation starts and ends
 (pages_<rank>_start.txt, pages_<rank>_end.txt in the recordings folder; Magnus Stromme, 28 Oct 2026).
 """
@@ -25,7 +29,9 @@ import subprocess
 import time
 
 RANKS = (0, 1)
-MODE = "ibs"   # "events": the five events of 27 Oct with 4 kB stacks over the whole measured simulation
+# "events": the five events of 27 Oct with 4 kB stacks over the whole measured simulation; "ibs": the op sampling of
+# 30 Oct; "fills": the fills and prefetches of 31 Oct
+MODE = "fills"
 # No sampling rate: each event has a fixed period, so the periods of its samples add up to its count. 512 kB of buffer
 # per thread; 4 kB of each thread's stack per sample, for its call stack; events off until switched on.
 OPTIONS = ["-m", "128", "--call-graph=dwarf,4096", "-D", "-1"]
@@ -46,6 +52,13 @@ IBS_OPTIONS = ["-c", "1048560", "-d", "-W", "-R", "-m", "128", "--call-graph=dwa
 # per delivery; mispredicted branches at up to about 1 per delivery.
 IBS_ROLES = ((("cycles",), 40000000), (("instructions",), 8000000), (("ex_ret_ops",), 8000000),
              (("ls_dispatch.ld_dispatch",), 4000000), (("ex_ret_brn_misp",), 40000))
+# Fills mode: the five events, each the first name this perf accepts, at periods for about 4,000 delivery samples each
+# in the window (1.16e9 deliveries per rank in the IBS run's 10 s, 2,915 cycles): cycles at NEST's 525 per delivery, the
+# fills and prefetches at about 1 per delivery each (0.5 to 2 expected).
+FILLS_ROLES = ((("cycles",), 150000000), (("ls_dmnd_fills_from_sys.int_cache",), 300000),
+               (("ls_dmnd_fills_from_sys.mem_io_local",), 300000), (("ls_hw_pf_dc_fills.mem_io_local",), 300000),
+               (("l2_pf_miss_l2_l3",), 300000))
+FILLS_OPTIONS = ["-m", "128", "--call-graph=dwarf,1024", "-D", "-1"]
 WINDOW = 10.0   # seconds of the measured simulation recorded: about 1.6e6 samples, 2 GB per rank
 IBS_FIELDS = "pid,tid,time,period,event,ip,sym,dso"
 IBS_OPS_FIELDS = "pid,tid,time,period,event,ip,sym,dso,addr,data_src"
@@ -134,12 +147,14 @@ class Recording:
             return self
 
     def _start(self):
-        roles = IBS_ROLES if MODE == "ibs" else ROLES
+        roles = {"ibs": IBS_ROLES, "fills": FILLS_ROLES}.get(MODE, ROLES)
         names = [next((e for e in role if accepted(e)), None) for role, _ in roles]
         events = [with_period(e, period, self.data + ".probe") if e else None for e, (_, period) in zip(names, roles)]
         options = OPTIONS
         if MODE == "ibs":
             events, options = [IBS_EVENT] + events, IBS_OPTIONS
+        elif MODE == "fills":
+            options = FILLS_OPTIONS
         try:
             version = subprocess.run(["perf", "--version"], capture_output=True, text=True).stdout.strip()
         except OSError:
@@ -171,7 +186,7 @@ class Recording:
             self.log["perf_affinity"] = None
         self.log["started"] = self._command("enable", 300)
         self.log["enabled_at"] = time.time()
-        if self.log["started"] and MODE == "ibs":
+        if self.log["started"] and MODE in ("ibs", "fills"):
             # a process of its own, as nest.Run may hold Python's lock for the whole simulation: after WINDOW seconds it
             # switches the events off through the control fifo and waits for perf's answer
             self.window = subprocess.Popen(["bash", "-c", "sleep {}; echo disable > '{}'; read -t 300 answer < '{}'; echo \"$answer\"".format(
