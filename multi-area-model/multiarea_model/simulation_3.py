@@ -31,7 +31,7 @@ from .default_params_3 import nested_update, sim_params
 from .default_params_3 import check_custom_params
 from dicthash import dicthash
 from .multiarea_helpers import extract_area_dict, create_vector_mask
-from .perf_recording import Recording, write_pages
+from .perf_recording import MODE, Recording, write_counts, write_pages
 try:
     from .sumatra_helpers import register_runtime
     sumatra_found = True
@@ -339,6 +339,8 @@ class Simulation:
         self.time_simulate = time.time() - t6
         recording.stop()
         write_pages(os.path.join(recordings, 'pages_{}_end.txt'.format(nest.Rank())))
+        if MODE == 'counts':
+            write_counts(self.spike_recorder, os.path.join(recordings, 'event_counts_{}.npz'.format(nest.Rank())))
 
         self.total_memory = self.memory()
         print("Simulated network in {0:.2f} seconds.".format(self.time_simulate))

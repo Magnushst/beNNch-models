@@ -17,6 +17,10 @@ MODE "fills" (Magnus Stromme, 31 Oct 2026) records the rank's own process for th
 events and 1 kB call stacks: cycles; demand fills of the L1 cache from the L3 (or another L2 of the same core complex)
 and from local memory; and what the L1 and L2 hardware prefetchers fetch from local memory. They tell where delivery's
 misses are served from and how much the prefetchers add (delivery_v1/FILLS_2026-10-31.md).
+MODE "counts" (Magnus Stromme, 1 Nov 2026) records no perf: the model's one spike recorder, kept in memory, records
+every unit from the start of the measured simulation, and after it each rank writes its units' event counts
+(write_counts, event_counts_<rank>.npz in the recordings folder). With network_gids.txt they give each population's
+rate in the measured second (delivery_v1/candidates/RATES_2026-11-01.md). Recording draws no random numbers.
 write_pages records every rank's memory and its share on large pages as the measured simulation starts and ends
 (pages_<rank>_start.txt, pages_<rank>_end.txt in the recordings folder; Magnus Stromme, 28 Oct 2026).
 """
@@ -30,8 +34,8 @@ import time
 
 RANKS = (0, 1)
 # "events": the five events of 27 Oct with 4 kB stacks over the whole measured simulation; "ibs": the op sampling of
-# 30 Oct; "fills": the fills and prefetches of 31 Oct
-MODE = "fills"
+# 30 Oct; "fills": the fills and prefetches of 31 Oct; "counts": every unit's events in the measured second, no perf
+MODE = "counts"
 # No sampling rate: each event has a fixed period, so the periods of its samples add up to its count. 512 kB of buffer
 # per thread; 4 kB of each thread's stack per sample, for its call stack; events off until switched on.
 OPTIONS = ["-m", "128", "--call-graph=dwarf,4096", "-D", "-1"]
@@ -133,7 +137,7 @@ class Recording:
 
     def start(self):
         """Never raises: on any failure the rank simulates unrecorded, and the failure is logged."""
-        if self.rank not in RANKS:
+        if self.rank not in RANKS or MODE == "counts":
             return self
         try:
             return self._start()
@@ -252,6 +256,20 @@ class Recording:
         self.log["script_seconds"] = time.time() - start
         self.log["data_bytes"] = os.path.getsize(self.data) if os.path.exists(self.data) else None
         self._write_log()
+
+
+def write_counts(recorder, path):
+    """Counts mode: this rank's units' events as the recorder (memory, from the start of the measured simulation) holds
+    them, written as each sender's id and its number of events (event_counts_<rank>.npz). Never raises: a failure is
+    written into the file instead, and the run goes on."""
+    try:
+        import numpy as np
+        events = recorder.get("events")
+        ids, counts = np.unique(np.asarray(events["senders"]), return_counts=True)
+        np.savez_compressed(path, ids=ids, counts=counts, events=int(counts.sum()))
+    except Exception as err:  # noqa: BLE001
+        with open(path + ".error.txt", "w") as f:
+            f.write("{!r}\n".format(err))
 
 
 def write_pages(path):
