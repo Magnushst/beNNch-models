@@ -312,6 +312,14 @@ class Simulation:
             self.time_network_global))
 
         self.save_network_gids()
+        if MODE == 'counts':
+            # counts mode (perf_recording.py): a spike recorder created after the whole network, so that no unit's id,
+            # and so no unit's thread or random numbers, changes; every unit is connected to it, kept in memory from the
+            # start of the measured simulation
+            self.count_recorder = nest.Create('spike_recorder', params={'record_to': 'memory', 'start': self.pre_T})
+            for area in self.areas:
+                for pop in area.populations:
+                    nest.Connect(area.gids[pop], self.count_recorder)
 
         print("Network size:", nest.GetKernelStatus('network_size'))
         print("Saved network in {0:2f} seconds.".format(time.time() - t3))
@@ -340,7 +348,7 @@ class Simulation:
         recording.stop()
         write_pages(os.path.join(recordings, 'pages_{}_end.txt'.format(nest.Rank())))
         if MODE == 'counts':
-            write_counts(self.spike_recorder, os.path.join(recordings, 'event_counts_{}.npz'.format(nest.Rank())))
+            write_counts(self.count_recorder, os.path.join(recordings, 'event_counts_{}.npz'.format(nest.Rank())))
 
         self.total_memory = self.memory()
         print("Simulated network in {0:.2f} seconds.".format(self.time_simulate))

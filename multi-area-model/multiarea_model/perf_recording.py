@@ -17,10 +17,11 @@ MODE "fills" (Magnus Stromme, 31 Oct 2026) records the rank's own process for th
 events and 1 kB call stacks: cycles; demand fills of the L1 cache from the L3 (or another L2 of the same core complex)
 and from local memory; and what the L1 and L2 hardware prefetchers fetch from local memory. They tell where delivery's
 misses are served from and how much the prefetchers add (delivery_v1/FILLS_2026-10-31.md).
-MODE "counts" (Magnus Stromme, 1 Nov 2026) records no perf: the model's one spike recorder, kept in memory, records
-every unit from the start of the measured simulation, and after it each rank writes its units' event counts
-(write_counts, event_counts_<rank>.npz in the recordings folder). With network_gids.txt they give each population's
-rate in the measured second (delivery_v1/candidates/RATES_2026-11-01.md). Recording draws no random numbers.
+MODE "counts" (Magnus Stromme, 1 Nov 2026) records no perf: a spike recorder, created after the whole network so that
+no unit's id, thread or random numbers change (simulation_3.py), kept in memory, records every unit from the start of
+the measured simulation; after it each rank writes its units' event counts (write_counts, event_counts_<rank>.npz in
+the recordings folder). With network_gids.txt they give each population's rate in the measured second
+(delivery_v1/candidates/RATES_2026-11-01.md). The model's own recording stays off, as in the benchmark.
 write_pages records every rank's memory and its share on large pages as the measured simulation starts and ends
 (pages_<rank>_start.txt, pages_<rank>_end.txt in the recordings folder; Magnus Stromme, 28 Oct 2026).
 """

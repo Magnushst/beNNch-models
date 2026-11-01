@@ -5,7 +5,6 @@ import json
 import nest
 
 from multiarea_model import MultiAreaModel, MultiAreaModel_3
-from multiarea_model.perf_recording import MODE as PERF_MODE
 from config import base_path
 from start_jobs import start_job
 from figures.Schmidt2018_dyn.network_simulations import NEW_SIM_PARAMS
@@ -46,10 +45,7 @@ sim_params = {'t_sim': t_sim,
               'local_num_threads': num_local_threads,
               'recording_dict': {'record_vm': False}}
 
-if PERF_MODE == 'counts':
-    # every unit's events in the measured simulation, in memory, counted per unit after it (perf_recording.py)
-    sim_params['recording_dict']['spike_dict'] = {'label': 'spikes', 'record_to': 'memory', 'start': t_presim}
-elif not record_spikes:
+if not record_spikes:
     sim_params['recording_dict']['areas_recorded'] = []
 
 theory_params = {'dt': 0.1}
