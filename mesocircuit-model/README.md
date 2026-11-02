@@ -46,5 +46,15 @@ NEST's minimum delay here is 0.5 ms, so a cycle is 5 steps. The 1,000 ms measure
   31 Oct).
 - `run_benchmark.py` parses once its four placeholders are filled. No other braces name a parameter.
 
-It has not yet run to the end. Its first run failed in `create()` (above), and NEST runs only through ci-beNNch, on the
-cluster.
+**Laptop code check, 2 Nov** (the owner's one exception to "no NEST checks on the laptop"; no data, no result):
+- **Set-up.** This NEST commit (95e45a0ba) was built in scratch with MPI, cycle timers and detailed timers. The run used
+  2 ranks × 2 threads, with `run_benchmark.py` as JUBE fills it (seed 654, 5 ms of warm-up, 10 ms measured). Its one
+  addition was the model's own `N_scaling` and `K_scaling`, both 0.005: 15,906 units, with p0 the same as at full size.
+- **f59ada6's `network.py`** fails exactly as the cluster run did: `LayerExpected` in `GetPosition`, at its line 321.
+- **This branch's `network.py`** runs to the end:
+  - 30 cycle-log entries per rank (15 ms at a minimum delay of 0.5 ms), delays 0.5–4.4 ms;
+  - 191,787 connections (about 176,000 recurrent at this scale plus one drive connection per unit);
+  - all 15,906 positions written, unique and on the torus;
+  - every metric the config collects present in the logfiles.
+- **Time.** Connecting took 1.73 s on 4 laptop threads for about 5.1 × 10⁷ candidate pairs, about 135 ns per pair of
+  thread time. At full size that is about 9 min on 4 Hambach nodes, an extrapolation from a laptop.
