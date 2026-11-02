@@ -10,7 +10,8 @@ built by its own code, INM-6/mesocircuit-model at commit `f59ada6b3c3efb1fa18f96
 
 | File | What it is |
 |---|---|
-| `mesocircuit/simulation/network.py`, `mesocircuit/helpers/mpiops.py`, `mesocircuit/parameterization/{base_network_params,base_simulation_params,helpers_network}.py`, `mesocircuit/__init__.py`, `parametersets.py` (the model's `scripts/parametersets.py`), `LICENSE.rst` | The model's own files, unchanged (byte-equal to the commit's). |
+| `mesocircuit/helpers/mpiops.py`, `mesocircuit/parameterization/{base_network_params,base_simulation_params,helpers_network}.py`, `mesocircuit/__init__.py`, `parametersets.py` (the model's `scripts/parametersets.py`), `LICENSE.rst` | The model's own files, unchanged (byte-equal to the commit's). |
+| `mesocircuit/simulation/network.py` | The model's file as its pull request 239 changes it (heplesser/mesocircuit-model at 11cea50, closed unmerged), byte-equal to that version. It differs from f59ada6 in two places. The positions of a rank's units are read from `pop.spatial["positions"]` with the ids `pop[pop.local].global_id`, a work-around for NEST #3706, where slicing a collection loses its spatial metadata. `np.NINF` and `np.Inf` become `-np.inf` and `np.inf`, the same values. Neither change touches the network. |
 | `run_benchmark.py` | Derives the parameters as the model's `mesocircuit_framework.py` does, builds the network with the model's `Network.create()` and `Network.connect()` as its `run_network.py` does, then runs the warm-up and the measured period with `nest.Prepare` and `nest.Run`, as the multi-area model's benchmark does. |
 
 ## What a run records
@@ -32,13 +33,18 @@ NEST's minimum delay here is 0.5 ms, so a cycle is 5 steps. The 1,000 ms measure
 
 ## Checked before any run
 
-- The copied files are byte-equal to the commit's.
+- The copied files are byte-equal to the commit's, and `network.py` to pull request 239's.
 - The parameter derivation in `run_benchmark.py` gives a `net_dict` equal, value by value, to the one the engine's
   specification was made from. This was checked with the model's own code in an isolated environment (numpy 2.1.3),
   without NEST.
-- Every NEST call `network.py` makes exists in NEST 3.10.
-- `network.py` uses `np.NINF` and `np.Inf`, which numpy 2 removed. The Hambach stack has numpy 1.25.2, h5py 3.12.1 and
-  mpi4py 4.0.1 (pip list of the multi-area model's Hambach run of 31 Oct).
+- Every NEST call `network.py` makes exists in NEST 3.10. That alone was not enough: the first run (pipeline 539577,
+  2 Nov) failed in `create()`, where f59ada6 calls `GetPosition` on `GetLocalNodeCollection(pop)`, which raises
+  `LayerExpected` in this NEST (#3706). In this NEST, `FreeLayer::get_status` returns a rank's own positions in the
+  rank-local order of the collection (`nestkernel/free_layer.h`), the order of `pop[pop.local]`. So pull request 239's
+  length assertion holds here.
+- The Hambach stack has numpy 1.25.2, h5py 3.12.1 and mpi4py 4.0.1 (pip list of the multi-area model's Hambach run of
+  31 Oct).
 - `run_benchmark.py` parses once its four placeholders are filled. No other braces name a parameter.
 
-It has not been run: NEST runs only through ci-beNNch, on the cluster.
+It has not yet run to the end. Its first run failed in `create()` (above), and NEST runs only through ci-beNNch, on the
+cluster.
