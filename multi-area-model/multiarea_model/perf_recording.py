@@ -17,6 +17,10 @@ MODE "fills" (Magnus Stromme, 31 Oct 2026) records the rank's own process for th
 events and 1 kB call stacks: cycles; demand fills of the L1 cache from the L3 (or another L2 of the same core complex)
 and from local memory; and what the L1 and L2 hardware prefetchers fetch from local memory. They tell where delivery's
 misses are served from and how much the prefetchers add (delivery_v1/FILLS_2026-10-31.md).
+On Zen 2 (JURECA's EPYC 7742; Magnus Stromme, 3 Nov 2026) the fills mode takes Zen 2's names for the same demand fills
+(ls_refills_from_sys.ls_mabresp_lcl_cache, .ls_mabresp_lcl_dram), and, as Zen 2 counts no L1 prefetcher fills, the L2
+prefetches that hit the L3 (l2_pf_miss_l2_hit_l3) in place of the L1 prefetcher's; if this perf knows none of a role's
+names, its raw code (r<umask><event>, AMD's PMCx043, PMCx071, PMCx072).
 MODE "counts" (Magnus Stromme, 1 Nov 2026) records no perf: a spike recorder, created after the whole network so that
 no unit's id, thread or random numbers change (simulation_3.py), kept in memory, records every unit from the start of
 the measured simulation; after it each rank writes its units' event counts (write_counts, event_counts_<rank>.npz in
@@ -36,7 +40,7 @@ import time
 RANKS = (0, 1)
 # "events": the five events of 27 Oct with 4 kB stacks over the whole measured simulation; "ibs": the op sampling of
 # 30 Oct; "fills": the fills and prefetches of 31 Oct; "counts": every unit's events in the measured second, no perf
-MODE = "counts"
+MODE = "fills"
 # No sampling rate: each event has a fixed period, so the periods of its samples add up to its count. 512 kB of buffer
 # per thread; 4 kB of each thread's stack per sample, for its call stack; events off until switched on.
 OPTIONS = ["-m", "128", "--call-graph=dwarf,4096", "-D", "-1"]
@@ -60,9 +64,11 @@ IBS_ROLES = ((("cycles",), 40000000), (("instructions",), 8000000), (("ex_ret_op
 # Fills mode: the five events, each the first name this perf accepts, at periods for about 4,000 delivery samples each
 # in the window (1.16e9 deliveries per rank in the IBS run's 10 s, 2,915 cycles): cycles at NEST's 525 per delivery, the
 # fills and prefetches at about 1 per delivery each (0.5 to 2 expected).
-FILLS_ROLES = ((("cycles",), 150000000), (("ls_dmnd_fills_from_sys.int_cache",), 300000),
-               (("ls_dmnd_fills_from_sys.mem_io_local",), 300000), (("ls_hw_pf_dc_fills.mem_io_local",), 300000),
-               (("l2_pf_miss_l2_l3",), 300000))
+FILLS_ROLES = ((("cycles",), 150000000),
+               (("ls_dmnd_fills_from_sys.int_cache", "ls_refills_from_sys.ls_mabresp_lcl_cache", "r0243"), 300000),
+               (("ls_dmnd_fills_from_sys.mem_io_local", "ls_refills_from_sys.ls_mabresp_lcl_dram", "r0843"), 300000),
+               (("ls_hw_pf_dc_fills.mem_io_local", "l2_pf_miss_l2_hit_l3", "rff71"), 300000),
+               (("l2_pf_miss_l2_l3", "rff72"), 300000))
 FILLS_OPTIONS = ["-m", "128", "--call-graph=dwarf,1024", "-D", "-1"]
 WINDOW = 10.0   # seconds of the measured simulation recorded: about 1.6e6 samples, 2 GB per rank
 IBS_FIELDS = "pid,tid,time,period,event,ip,sym,dso"
@@ -97,8 +103,12 @@ def accepted(event):
 
 
 def with_period(event, period, probe):
-    """The event with its period in the first form this perf accepts, or None."""
-    for form in ("{}/period={}/u".format(event, period), "cpu/{},period={}/u".format(event, period)):
+    """The event with its period in the first form this perf accepts, or None. A raw code r<umask><event> (two hex
+    digits each) is written as cpu/event=0x..,umask=0x..,period=../u."""
+    forms = ["{}/period={}/u".format(event, period), "cpu/{},period={}/u".format(event, period)]
+    if len(event) == 5 and event[0] == "r" and all(c in "0123456789abcdef" for c in event[1:]):
+        forms.append("cpu/event=0x{},umask=0x{},period={}/u".format(event[3:], event[1:3], period))
+    for form in forms:
         try:
             ok = subprocess.run(["perf", "record", "-q", "-e", form, "-o", probe, "--", "true"],
                                 capture_output=True, timeout=60).returncode == 0
