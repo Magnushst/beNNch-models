@@ -17,10 +17,13 @@ MODE "fills" (Magnus Stromme, 31 Oct 2026) records the rank's own process for th
 events and 1 kB call stacks: cycles; demand fills of the L1 cache from the L3 (or another L2 of the same core complex)
 and from local memory; and what the L1 and L2 hardware prefetchers fetch from local memory. They tell where delivery's
 misses are served from and how much the prefetchers add (delivery_v1/FILLS_2026-10-31.md).
-On Zen 2 (JURECA's EPYC 7742; Magnus Stromme, 3 Nov 2026) the fills mode takes Zen 2's names for the same demand fills
-(ls_refills_from_sys.ls_mabresp_lcl_cache, .ls_mabresp_lcl_dram), and, as Zen 2 counts no L1 prefetcher fills, the L2
-prefetches that hit the L3 (l2_pf_miss_l2_hit_l3) in place of the L1 prefetcher's; if this perf knows none of a role's
-names, its raw code (r<umask><event>, AMD's PMCx043, PMCx071, PMCx072).
+On Zen 2 (JURECA's EPYC 7742; Magnus Stromme, 3 Nov 2026) the fills mode takes the demand fills as AMD's PMCx043 with
+its local and remote bits together (raw r1243, from the L3 or another core complex's cache; r4843, from memory), so no
+fill is missed whichever node Zen 2 counts as local on a node split into NUMA domains; and, as Zen 2 counts no L1
+prefetcher fills, the L2 prefetches that hit the L3 (l2_pf_miss_l2_hit_l3, raw rff71) in place of the L1 prefetcher's,
+beside those that miss it (rff72). The codes are those of perf 7.3's Zen 2 tables (PERF_CPUID=AuthenticAMD-23-31 perf
+list --details: PMCx043 umasks 0x02 and 0x10 from a cache, 0x08 and 0x40 from memory; PMCx071 and PMCx072 umask 0xff).
+The Zen 3 names stay first, so Hambach's recordings are unchanged. The log names the raw recording's path ("data").
 MODE "counts" (Magnus Stromme, 1 Nov 2026) records no perf: a spike recorder, created after the whole network so that
 no unit's id, thread or random numbers change (simulation_3.py), kept in memory, records every unit from the start of
 the measured simulation; after it each rank writes its units' event counts (write_counts, event_counts_<rank>.npz in
@@ -65,8 +68,8 @@ IBS_ROLES = ((("cycles",), 40000000), (("instructions",), 8000000), (("ex_ret_op
 # in the window (1.16e9 deliveries per rank in the IBS run's 10 s, 2,915 cycles): cycles at NEST's 525 per delivery, the
 # fills and prefetches at about 1 per delivery each (0.5 to 2 expected).
 FILLS_ROLES = ((("cycles",), 150000000),
-               (("ls_dmnd_fills_from_sys.int_cache", "ls_refills_from_sys.ls_mabresp_lcl_cache", "r0243"), 300000),
-               (("ls_dmnd_fills_from_sys.mem_io_local", "ls_refills_from_sys.ls_mabresp_lcl_dram", "r0843"), 300000),
+               (("ls_dmnd_fills_from_sys.int_cache", "r1243"), 300000),
+               (("ls_dmnd_fills_from_sys.mem_io_local", "r4843"), 300000),
                (("ls_hw_pf_dc_fills.mem_io_local", "l2_pf_miss_l2_hit_l3", "rff71"), 300000),
                (("l2_pf_miss_l2_l3", "rff72"), 300000))
 FILLS_OPTIONS = ["-m", "128", "--call-graph=dwarf,1024", "-D", "-1"]
@@ -129,7 +132,7 @@ class Recording:
             os.makedirs(scratch, exist_ok=True)
         except OSError:
             scratch = recordings
-        self.data = os.path.join(scratch, "rank_{}_perf.data".format(rank))
+        self.data = self.log["data"] = os.path.join(scratch, "rank_{}_perf.data".format(rank))
 
     def _write_log(self):
         with open(self.out + ".json", "w") as f:
