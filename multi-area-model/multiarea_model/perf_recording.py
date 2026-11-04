@@ -29,6 +29,15 @@ no unit's id, thread or random numbers change (simulation_3.py), kept in memory,
 the measured simulation; after it each rank writes its units' event counts (write_counts, event_counts_<rank>.npz in
 the recordings folder). With network_gids.txt they give each population's rate in the measured second
 (delivery_v1/candidates/RATES_2026-11-01.md). The model's own recording stays off, as in the benchmark.
+MODE "compare" (Magnus Stromme, 4 Nov 2026) records ranks 0 to 9 for the first WINDOW seconds, each node's two ranks with
+one group of five core events (COMPARE_GROUPS: ranks 0 and 1 the first, 2 and 3 the second, and so on), so that 25
+events are counted on five nodes without two events sharing a counter: the work (cycles, instructions, retired ops,
+loads and stores dispatched); the L1 cache's demand fills by where they come from (the L2, the L3 of the core's own
+complex, another complex's cache, local memory, the other socket); the hardware prefetchers' fills (the L1's from the
+L2, an L3 and memory; the L2's that hit and that miss the L3); the data TLB (L1 misses, L2 hits, L2 misses on 4 kB and
+2 MB pages, page walks); and branches and the L1 cache (cycles, branches, mispredicted branches, L1 accesses, L1
+misses by loads). Each is AMD Zen 3's code (PPR for family 19h model 01h; perf's amdzen3 tables), written r<umask><event>.
+The same groups record delivery_v2 on the same nodes (delivery_v2/PERF8_2026-11-04.md).
 write_pages records every rank's memory and its share on large pages as the measured simulation starts and ends
 (pages_<rank>_start.txt, pages_<rank>_end.txt in the recordings folder; Magnus Stromme, 28 Oct 2026).
 """
@@ -42,8 +51,9 @@ import time
 
 RANKS = (0, 1)
 # "events": the five events of 27 Oct with 4 kB stacks over the whole measured simulation; "ibs": the op sampling of
-# 30 Oct; "fills": the fills and prefetches of 31 Oct; "counts": every unit's events in the measured second, no perf
-MODE = "fills"
+# 30 Oct; "fills": the fills and prefetches of 31 Oct; "counts": every unit's events in the measured second, no perf;
+# "compare": five groups of five events on ranks 0 to 9, beside delivery_v2 (4 Nov)
+MODE = "compare"
 # No sampling rate: each event has a fixed period, so the periods of its samples add up to its count. 512 kB of buffer
 # per thread; 4 kB of each thread's stack per sample, for its call stack; events off until switched on.
 OPTIONS = ["-m", "128", "--call-graph=dwarf,4096", "-D", "-1"]
@@ -73,9 +83,35 @@ FILLS_ROLES = ((("cycles",), 150000000),
                (("ls_hw_pf_dc_fills.mem_io_local", "l2_pf_miss_l2_hit_l3", "rff71"), 300000),
                (("l2_pf_miss_l2_l3", "rff72"), 300000))
 FILLS_OPTIONS = ["-m", "128", "--call-graph=dwarf,1024", "-D", "-1"]
+# Compare mode: rank r records group r // 2, ranks 0 to 9. Periods for about 4,000 delivery samples per event in the
+# window (as the fills mode's) at NEST's counts per delivery where measured (525 cycles, 105 instructions, 110 ops, 50
+# loads, 1.8 fills from the L3, 1.1 from memory, 0.35 page walks), at 1 to 2 per delivery otherwise; 100,000 for what
+# should be rare (another complex's cache, the other socket, 2 MB pages' walks).
+COMPARE_GROUPS = (
+    ("work", ((("cycles",), 150000000), (("instructions",), 30000000), (("r00c1",), 30000000), (("r0129",), 15000000),
+              (("r0229",), 2000000))),
+    ("demand fills", ((("r0143",), 300000), (("r0243",), 300000), (("r0443",), 100000), (("r0843",), 300000),
+                      (("r5043",), 100000))),
+    ("prefetches", ((("r015a",), 300000), (("r065a",), 300000), (("r485a",), 300000), (("rff71",), 300000),
+                    (("rff72",), 300000))),
+    ("tlb", ((("rff45",), 300000), (("r0f45",), 300000), (("r1045",), 100000), (("r4045",), 100000), (("r0346",), 100000))),
+    ("branches and l1", ((("cycles",), 150000000), (("r00c2",), 5000000), (("r00c3",), 100000), (("r0040",), 15000000),
+                         (("r0141",), 300000))))
 WINDOW = 10.0   # seconds of the measured simulation recorded: about 1.6e6 samples, 2 GB per rank
 IBS_FIELDS = "pid,tid,time,period,event,ip,sym,dso"
 IBS_OPS_FIELDS = "pid,tid,time,period,event,ip,sym,dso,addr,data_src"
+
+
+def zen3():
+    """Whether this node's processor is AMD Zen 3 (family 25, model 1: Hambach's EPYC 7713), whose codes the compare
+    mode's groups are."""
+    try:
+        with open("/proc/cpuinfo") as f:
+            info = f.read()
+    except OSError:
+        return False
+    first = lambda key: next((line.split(":", 1)[1].strip() for line in info.splitlines() if line.startswith(key)), None)  # noqa: E731
+    return first("vendor_id") == "AuthenticAMD" and first("cpu family") == "25" and first("model\t") == "1"
 
 
 def rank_cpus():
@@ -151,7 +187,8 @@ class Recording:
 
     def start(self):
         """Never raises: on any failure the rank simulates unrecorded, and the failure is logged."""
-        if self.rank not in RANKS or MODE == "counts":
+        recorded = self.rank < 2 * len(COMPARE_GROUPS) if MODE == "compare" else self.rank in RANKS
+        if not recorded or MODE == "counts":
             return self
         try:
             return self._start()
@@ -166,12 +203,18 @@ class Recording:
 
     def _start(self):
         roles = {"ibs": IBS_ROLES, "fills": FILLS_ROLES}.get(MODE, ROLES)
+        if MODE == "compare":
+            self.log["group"], roles = COMPARE_GROUPS[self.rank // 2]
+            if not zen3():   # the groups' codes are Zen 3's: on another processor they count something else, so nothing
+                self.log.update(started=False, error="compare mode records only on AMD Zen 3 (family 25, model 1)")
+                self._write_log()
+                return self
         names = [next((e for e in role if accepted(e)), None) for role, _ in roles]
         events = [with_period(e, period, self.data + ".probe") if e else None for e, (_, period) in zip(names, roles)]
         options = OPTIONS
         if MODE == "ibs":
             events, options = [IBS_EVENT] + events, IBS_OPTIONS
-        elif MODE == "fills":
+        elif MODE in ("fills", "compare"):
             options = FILLS_OPTIONS
         try:
             version = subprocess.run(["perf", "--version"], capture_output=True, text=True).stdout.strip()
@@ -204,7 +247,7 @@ class Recording:
             self.log["perf_affinity"] = None
         self.log["started"] = self._command("enable", 300)
         self.log["enabled_at"] = time.time()
-        if self.log["started"] and MODE in ("ibs", "fills"):
+        if self.log["started"] and MODE in ("ibs", "fills", "compare"):
             # a process of its own, as nest.Run may hold Python's lock for the whole simulation: after WINDOW seconds it
             # switches the events off through the control fifo and waits for perf's answer
             self.window = subprocess.Popen(["bash", "-c", "sleep {}; echo disable > '{}'; read -t 300 answer < '{}'; echo \"$answer\"".format(
