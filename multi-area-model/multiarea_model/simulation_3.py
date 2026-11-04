@@ -163,6 +163,10 @@ class Simulation:
                               'spike_buffer_grow_extra': self.params['spike_buffer_grow_extra'],
                               'spike_buffer_shrink_limit': self.params['spike_buffer_shrink_limit'],
                               'spike_buffer_shrink_spare': self.params['spike_buffer_shrink_spare']})
+        # EXPERIMENTAL, NOT STOCK: software prefetching in the delivery (nest/nest-simulator pull request 3990)
+        if self.params['spike_delivery_prefetch']:
+            nest.SetKernelStatus({'spike_delivery_prefetch': True})
+        print('spike_delivery_prefetch', nest.GetKernelStatus().get('spike_delivery_prefetch', 'absent'))
 
         # nest.set_verbosity('M_INFO')
 

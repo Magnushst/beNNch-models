@@ -53,7 +53,10 @@ sim_params = {
     # Spike buffer adaptation
     'spike_buffer_grow_extra' : 0.5,
     'spike_buffer_shrink_limit': 0.2,
-    'spike_buffer_shrink_spare': 0.1
+    'spike_buffer_shrink_spare': 0.1,
+    # EXPERIMENTAL, NOT STOCK: NEST's kernel parameter spike_delivery_prefetch (pull request nest/nest-simulator 3990);
+    # set in the kernel only when True, so a NEST without the parameter runs the model unchanged when it is False
+    'spike_delivery_prefetch': False
 }
 
 """
