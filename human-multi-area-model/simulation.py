@@ -285,7 +285,10 @@ class Simulation():
                     ]
                     if conn_rule == 'fixed_total_number':
                         conn_dict_rec = {
-                            'rule': conn_rule, 'N': synapse_nr
+                            'rule': conn_rule, 'N': synapse_nr,
+                            # EXPERIMENTAL, NOT STOCK: the connections regenerated instead of stored (marked NEST copy
+                            # EXPERIMENTAL-NOT-STOCK-procedural-connections)
+                            'procedural': True
                         }
                     elif conn_rule == 'fixed_indegree':
                         neuron_nr = self.net_dict['neuron_numbers'].loc[
