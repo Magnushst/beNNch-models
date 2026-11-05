@@ -20,6 +20,7 @@ import nest
 import numpy as np
 import os
 import pprint
+import resource
 import shutil
 import time
 import math
@@ -428,6 +429,9 @@ class Simulation:
         with open(fn, 'a') as f:
             for key, value in d.items():
                 f.write(key + ' ' + str(value) + '\n')
+            # EXPERIMENTAL, NOT STOCK: also this rank's peak resident memory in KiB (ru_maxrss), as PD14's and the human
+            # model's logfiles record it; NEST's memory_size is its virtual size
+            f.write('peak_resident_memory_kib ' + str(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) + '\n')
 
         # NEST built with cycle timers keeps one entry per cycle in its cycle_time_log. The logfile above
         # shortens long arrays, so each rank also saves the whole log, one array per key.
@@ -679,7 +683,10 @@ def connect(simulation,
 
             if number_of_synapses > 0:
                 conn_spec = {'rule': 'fixed_total_number',
-                             'N': int(synapses[target][source])}
+                             'N': int(synapses[target][source]),
+                             # EXPERIMENTAL, NOT STOCK: the connections regenerated instead of stored (marked NEST copy
+                             # EXPERIMENTAL-NOT-STOCK-procedural-connections)
+                             'procedural': True}
 
                 if target_area == source_area:
                     if 'E' in source:
