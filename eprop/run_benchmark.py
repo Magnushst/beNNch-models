@@ -29,9 +29,11 @@ The trace cutoff is CUTOFF ms, NEST's examples' value and equal to INTERVAL.
 - The warm-up and the measured period run with nest.Prepare and nest.Run, as in this repository's Brunel benchmark
   (branch brunel), whose logging is repeated here.
 - perf_recording.py, copied from branch save-cycle-log-perf with MODE "events", records ranks 0 and 1 during the
-  measured period only.
+  measured period only. Its sampling periods are set below from the config's perf_period.
 - perf_shares.py then reads each recording on the node and writes perf_<rank>_shares.json.
-- JUBE replaces the seven placeholders below. No other braces in this file may name a parameter.
+- logging() runs after perf's write-out, so a write-out that overruns the walltime loses the logfile. The walltime
+  is set to cover it.
+- JUBE replaces the eight placeholders below. No other braces in this file may name a parameter.
 """
 import os
 import resource
@@ -40,6 +42,7 @@ import time
 import nest
 import numpy as np
 
+import perf_recording
 from perf_recording import Recording, write_pages
 from perf_shares import write_shares
 
@@ -50,6 +53,9 @@ SEED = {rng_seed}
 PLASTICITY = "{plasticity}"  # "eprop_gd", "eprop_adam" or "static"
 N_REC = {n_rec}  # recurrent eprop_iaf neurons
 K_REC = {k_rec}  # recurrent in-degree
+PERF_PERIOD = {perf_period}  # cycles per perf sample; instructions are sampled at a third of it
+
+perf_recording.ROLES = ((("cycles",), PERF_PERIOD), (("instructions",), PERF_PERIOD // 3))
 
 DT = 1.0  # ms, resolution, as in NEST's e-prop examples and the scaling setup
 DELAY = 1.0  # ms, every connection's delay (one step)
@@ -174,8 +180,8 @@ nrns_rec = nest.Create("eprop_iaf", N_REC, PARAMS_REC)
 nrns_out = nest.Create("eprop_readout", N_OUT, PARAMS_OUT)
 gen_target = nest.Create("step_rate_generator", N_OUT, params=dict(amplitude_times=[2.0], amplitude_values=[0.0]))
 gen_window = nest.Create("step_rate_generator", 1, params=dict(amplitude_times=[2.0], amplitude_values=[1.0]))
-offsets = np.random.default_rng(SEED).integers(1, int(INTERVAL) + 1, N_REC).astype(float)
-nrns_rec.set(ignore_and_spike_offset=offsets.tolist())
+# offsets of 1 to INTERVAL ms, drawn by NEST's own random parameters, which every rank evaluates for its own neurons
+nrns_rec.set(ignore_and_spike_offset=nest.random.uniform_int(int(INTERVAL)) + 1.0)
 t2 = time.time()
 memory_used['node_memory'] = memory()
 if PLASTICITY != "static":

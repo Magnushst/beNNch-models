@@ -15,6 +15,9 @@ threads are written beside them, in case the 4 kB stacks never reach libgomp.
 **Classes,** each sample in the first whose test its stack meets:
 - gradient: any frame named ...compute_gradient, meaning the per-synapse loop and everything it calls. Its share of
   cycles is f;
+- openmp_wait: a leaf frame in libgomp, meaning a thread spinning or waiting in the OpenMP runtime (the pipeline runs
+  with OMP_WAIT_POLICY=ACTIVE). It is reported beside f: waits caused by the loop's imbalance are not credited to
+  the loop, which biases f low;
 - erase: any frame named ...erase_used_eprop_history;
 - send: any frame of eprop_synapse's send, the e-prop synapse's own work outside the loop;
 - neuron_update: any frame of eprop_iaf's or eprop_readout's update, the neurons' per-step work and their history
@@ -40,7 +43,7 @@ from collections import defaultdict
 HEADER = re.compile(r"^\s*(\d+)\s+(\d+)\s+(\S+?):?\s*$")
 FRAME = re.compile(r"^\s+[0-9a-f]+\s+(.*?)\s+\((.*)\)\s*$")
 MPI_LIBS = ("libmpi", "libmca", "libucp", "libuct", "libucs", "libfabric", "libopen-pal", "libpsm", "libibverbs")
-CLASSES = ("gradient", "erase", "send", "neuron_update", "mpi", "other")
+CLASSES = ("gradient", "openmp_wait", "erase", "send", "neuron_update", "mpi", "other")
 PARTS = ("optimizer", "libm", "lookup", "loop", "other")
 EVENTS = ("cycles", "instructions")
 
@@ -84,6 +87,8 @@ def has(frames, *needles):
 def classify(frames):
     if has(frames, "compute_gradient"):
         return "gradient"
+    if "libgomp" in frames[0][1]:
+        return "openmp_wait"
     if has(frames, "erase_used_eprop_history"):
         return "erase"
     if has(frames, "eprop_synapse", "send"):

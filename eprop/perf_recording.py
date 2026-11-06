@@ -69,6 +69,7 @@ OPTIONS = ["-m", "128", "--call-graph=dwarf,4096", "-D", "-1"]
 # - the measured 500 ms are expected to take about 50 s on one node, at 64 threads per rank and about 2.5 GHz;
 # - so a rank holds about 8e12 cycles;
 # - at 1.5e9 cycles per sample, that gives about 5,000 samples, the share f to about 0.4 percentage points.
+# run_benchmark.py replaces ROLES from the config's perf_period; these values are the default.
 ROLES = ((("cycles",), 1500000000), (("instructions",), 500000000))
 FIELDS = "tid,event,period,ip,sym,dso"
 # IBS mode: the op sampler, its period (2^20 - 16, the longest without IBS's extended counter) and options; the core

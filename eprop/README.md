@@ -17,7 +17,8 @@ there.
 - `model_time_presim` and `model_time_sim`, in ms;
 - `rng_seed`;
 - `plasticity`: eprop_gd, eprop_adam or static;
-- `n_rec` and `k_rec`, the recurrent neurons and their in-degree.
+- `n_rec` and `k_rec`, the recurrent neurons and their in-degree;
+- `perf_period`, the cycles between perf samples. Instructions are sampled at a third of it.
 
 **Fixed in the script:**
 - 1,000 Poisson inputs at 5 spikes/s, with input in-degree 100;
