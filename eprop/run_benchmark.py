@@ -178,8 +178,12 @@ gen_in = nest.Create("poisson_generator", params=dict(rate=RATE_IN))
 nrns_in = nest.Create("parrot_neuron", N_IN)
 nrns_rec = nest.Create("eprop_iaf", N_REC, PARAMS_REC)
 nrns_out = nest.Create("eprop_readout", N_OUT, PARAMS_OUT)
-gen_target = nest.Create("step_rate_generator", N_OUT, params=dict(amplitude_times=[2.0], amplitude_values=[0.0]))
-gen_window = nest.Create("step_rate_generator", 1, params=dict(amplitude_times=[2.0], amplitude_values=[1.0]))
+# as NEST's N-MNIST example sets its readouts' generators: created bare, then one dictionary per generator, so that
+# NEST cannot take the arrays for per-generator values
+gen_target = nest.Create("step_rate_generator", N_OUT)
+gen_target.set([dict(amplitude_times=[2.0], amplitude_values=[0.0]) for _ in range(N_OUT)])
+gen_window = nest.Create("step_rate_generator")
+gen_window.set(dict(amplitude_times=[2.0], amplitude_values=[1.0]))
 # offsets of 1 to INTERVAL ms, drawn by NEST's own random parameters, which every rank evaluates for its own neurons
 nrns_rec.set(ignore_and_spike_offset=nest.random.uniform_int(int(INTERVAL)) + 1.0)
 t2 = time.time()
