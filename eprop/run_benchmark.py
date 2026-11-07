@@ -53,9 +53,10 @@ SEED = {rng_seed}
 PLASTICITY = "{plasticity}"  # "eprop_gd", "eprop_adam" or "static"
 N_REC = {n_rec}  # recurrent eprop_iaf neurons
 K_REC = {k_rec}  # recurrent in-degree
-PERF_PERIOD = {perf_period}  # cycles per perf sample; instructions are sampled at a third of it
-
-perf_recording.ROLES = ((("cycles",), PERF_PERIOD), (("instructions",), PERF_PERIOD // 3))
+PERF_PERIOD = {perf_period}  # cycles per perf sample; instructions are sampled at three times it
+# Instructions at three times the cycles period: at the code check's 2.8 instructions per cycle in compute_gradient, a
+# third of it gave over eight instructions samples per cycles sample, and perf lost samples (registration, section 2).
+perf_recording.ROLES = ((("cycles",), PERF_PERIOD), (("instructions",), PERF_PERIOD * 3))
 
 DT = 1.0  # ms, resolution, as in NEST's e-prop examples and the scaling setup
 DELAY = 1.0  # ms, every connection's delay (one step)

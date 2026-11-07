@@ -8,8 +8,9 @@ there.
 **Files:**
 - `run_benchmark.py`: the network, the warm-up and the measured period, and the Brunel benchmark's logging. Its
   docstring gives the network.
-- `perf_recording.py`: the model hook of branch save-cycle-log-perf (e10d03d), copied with MODE "events". It records
-  ranks 0 and 1 during the measured period only.
+- `perf_recording.py`: the model hook of branch save-cycle-log-perf (e10d03d), copied with MODE "events". It switches
+  perf on for ranks 0 and 1 just before the measured period, and off once perf answers after it. Threads idle outside
+  NEST's update loop in that time are recorded too; the registration's reading leaves them out.
 - `perf_shares.py`: the registered reading, run on the node after the recording. It writes perf_<rank>_shares.json
   into data/eprop/recordings/, where the existing fetch rules for perf_* and pages_* match.
 
@@ -18,7 +19,7 @@ there.
 - `rng_seed`;
 - `plasticity`: eprop_gd, eprop_adam or static;
 - `n_rec` and `k_rec`, the recurrent neurons and their in-degree;
-- `perf_period`, the cycles between perf samples. Instructions are sampled at a third of it.
+- `perf_period`, the cycles between perf samples. Instructions are sampled at three times it.
 
 **Fixed in the script:**
 - 1,000 Poisson inputs at 5 spikes/s, with input in-degree 100;
@@ -33,4 +34,4 @@ there.
 - **The neuron parameters:** NEST's `pynest/examples/eprop_plasticity/eprop_supervised_regression_sine-waves.py`.
 - **The optimiser:** gradient descent, or Adam, once per spike, as in NEST's event-based examples.
 
-**Status:** not run. NEST is the stock reference branch, v3.10-cycle-phase-timers, unchanged.
+**Runs and results:** in the registration. NEST is the stock reference branch, v3.10-cycle-phase-timers, unchanged.
